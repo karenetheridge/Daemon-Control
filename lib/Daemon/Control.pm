@@ -16,6 +16,7 @@ my @accessors = qw(
     uid path gid scan_name stdout_file stderr_file pid_file fork data
     lsb_start lsb_stop lsb_sdesc lsb_desc redirect_before_fork init_config
     kill_timeout umask resource_dir help init_code
+    check_duplicate_process
 );
 
 my $cmd_opt = "[start|stop|restart|reload|status|show_warnings|get_init_file|help]";
@@ -325,6 +326,26 @@ sub pid_running {
     return kill 0, $self->pid;
 }
 
+sub process_running {
+    my ( $self, $pattern ) = @_;
+
+    my $psopt = $^O =~ m/bsd$/ ? '-ax' : '-u ' . $self->user;
+    my $ps = `LC_ALL=C command ps $psopt -o pid,args`;
+    $ps =~ s/^\s+//mg;
+    my @pids;
+    for my $line (split /\n/, $ps)
+    {
+        next if $line =~ m/^\D/;
+        my ($pid, $command, $args) = split /\s+/, $line, 3;
+
+        next if $pid eq $$;
+        push @pids, $pid
+          if $command =~ $pattern
+              or defined $args and $args =~ $pattern;
+    }
+    return @pids;
+}
+
 sub pretty_print {
     my ( $self, $message, $color ) = @_;
 
@@ -337,6 +358,21 @@ sub pretty_print {
 
 sub do_start {
     my ( $self ) = @_;
+
+    # Optionally check if a process is already running with the same name
+    if ($self->check_duplicate_process)
+    {
+        my $program = $self->program;
+        my $pattern = $self->check_duplicate_process eq '1'
+            ? qr/\b${program}\b/
+            : $self->check_duplicate_process;
+        my @pids = $self->process_running($pattern);
+        if (@pids)
+        {
+            $self->pretty_print( 'Duplicate Running? (pid ' . join(', ', @pids) . ')', "red" );
+            exit 1;
+        }
+    }
 
     # Make sure the PID file exists.
     if ( ! -f $self->pid_file ) {
@@ -774,6 +810,14 @@ This directory will be created, and chowned to the user/group provided in
 C<user>, and C<group>.
 
     $daemon->resource_dir( "/var/run/mydaemon" );
+
+=head2 check_duplicate_process
+
+If this is set (defaults to unset), then the C<ps> list will be checked at
+startup for any processes that look like the daemon to be started.
+By default the pattern used is C<< /\b<program name>\b/, but you can pass an
+override regexp in this field instead.  (experimental; may produce some false
+positives, depending on what else is running on your system.)
 
 =head2 fork
 

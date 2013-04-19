@@ -1,6 +1,7 @@
 
     * create dir for pid_file if it does not exist
     * fix uninitialized warning in error when exec fails
+    * new option: check_duplicate_process
 
 0.001000  2013-02-26  SymKat <symkat@symkat.com>
     * fixed a warning on "uninitialized value $called_with in substitution"

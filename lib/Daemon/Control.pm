@@ -8,7 +8,7 @@ use File::Path qw( make_path );
 use Cwd 'abs_path';
 require 5.008001; # Supporting 5.8.1+
 
-our $VERSION = '0.001000'; # 0.1.0
+our $VERSION = '0.001000_001'; # 0.1.0
 $VERSION = eval $VERSION;
 
 my @accessors = qw(
@@ -138,7 +138,8 @@ sub _create_resource_dir {
 sub _create_dir {
     my ( $self, $dir ) = @_;
 
-    return 0 unless $dir;
+    return 0 unless defined $dir;
+    return 1 unless length($dir);
 
     if ( -d $dir ) {
         $self->trace( "Dir exists (" . $dir . ") - no need to create" );
@@ -418,8 +419,16 @@ sub do_stop {
 
     if ( $self->pid && $self->pid_running ) {
         foreach my $signal ( qw(TERM TERM INT KILL) ) {
+            $self->trace( "Sending $signal signal to pid ", $self->pid, "..." );
             kill $signal => $self->pid;
-            sleep $self->kill_timeout;
+
+            for (1..$self->kill_timeout)
+            {
+                # abort early if the process is now stopped
+                $self->trace('checking if pid ', $self->pid, ' is still running...');
+                last if not $self->pid_running;
+                sleep 1;
+            }
             last unless $self->pid_running;
         }
         if ( $self->pid_running ) {
